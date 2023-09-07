@@ -31,7 +31,8 @@ namespace MGroup.Solvers.LinearSystem
 		internal Guid Format { get; }
 
 		public TMatrix SingleMatrix { get; set; }
-		public bool CheckForCompatibility { get; set; } = true;
+
+		public bool CheckForCompatibility { get; set; }
 
 		public void AxpyIntoThis(IGlobalMatrix otherMatrix, double otherCoefficient)
 		{

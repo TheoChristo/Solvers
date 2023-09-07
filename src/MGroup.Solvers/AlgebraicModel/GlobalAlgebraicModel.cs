@@ -29,6 +29,7 @@ namespace MGroup.Solvers.AlgebraicModel
 		private readonly ISubdomainMatrixAssembler<TMatrix> subdomainMatrixAssembler;
 		private SubdomainVectorAssembler subdomainVectorAssembler;
 		private IAlgebraicModelInterpreter boundaryConditionsInterpreter;
+		private bool dofsHaveBeenOrdered = false;
 
 		public GlobalAlgebraicModel(IModel model, IDofOrderer dofOrderer,
 			ISubdomainMatrixAssembler<TMatrix> subdomainMatrixAssembler)
@@ -72,7 +73,7 @@ namespace MGroup.Solvers.AlgebraicModel
 			subdomainVectorAssembler.AddToSubdomainVector(elements, globalVector.SingleVector, vectorProvider, subdomainDofs);
 		}
 
-		public void AddToGlobalVector(Func<int, IEnumerable<INodalBoundaryCondition<IDofType>>> accessLoads, IGlobalVector vector)
+		public void AddToGlobalVector(Func<int, IEnumerable<INodalModelQuantity<IDofType>>> accessLoads, IGlobalVector vector)
 		{
 			GlobalVector globalVector = CheckCompatibleVector(vector);
 			ISubdomainFreeDofOrdering subdomainDofs = SubdomainFreeDofOrdering;
@@ -88,7 +89,7 @@ namespace MGroup.Solvers.AlgebraicModel
 		//	subdomainVectorAssembler.AddToSubdomainVector(loads, globalVector.SingleVector, subdomainDofs);
 		//}
 
-		public void AddToGlobalVector(IEnumerable<IDomainBoundaryCondition<IDofType>> loads, IGlobalVector vector)
+		public void AddToGlobalVector(IEnumerable<IDomainModelQuantity<IDofType>> loads, IGlobalVector vector)
 		{
 			GlobalVector globalVector = CheckCompatibleVector(vector);
 			ISubdomainFreeDofOrdering subdomainDofs = SubdomainFreeDofOrdering;
@@ -106,7 +107,14 @@ namespace MGroup.Solvers.AlgebraicModel
 
 		IGlobalVector IGlobalVectorAssembler.CreateZeroVector() => CreateZeroVector();
 
-		//TODO: Should there also be a CreateZeroMatrix()?
+		public IGlobalMatrix CreateEmptyMatrix()
+		{
+			ISubdomainFreeDofOrdering subdomainDofs = SubdomainFreeDofOrdering;
+			var globalMatrix = new GlobalMatrix<TMatrix>(Format, CheckCompatibleVector, CheckCompatibleMatrix);
+			globalMatrix.SingleMatrix = subdomainMatrixAssembler.CreateEmptyMatrix(subdomainDofs);
+			return globalMatrix;
+		}
+
 		public GlobalVector CreateZeroVector()
 		{
 			var result = new GlobalVector(Format, CheckCompatibleVector);
@@ -209,7 +217,7 @@ namespace MGroup.Solvers.AlgebraicModel
 			}
 		}
 
-		public virtual void OrderDofs()
+		protected virtual void OrderDofsInternal()
 		{
 			SubdomainFreeDofOrdering = dofOrderer.OrderFreeDofs(subdomain, BoundaryConditionsInterpreter);
 			foreach (IAlgebraicModelObserver observer in Observers)
@@ -223,9 +231,16 @@ namespace MGroup.Solvers.AlgebraicModel
 			LinearSystem.Matrix = null;
 			LinearSystem.RhsVector = CreateZeroVector();
 			LinearSystem.Solution = CreateZeroVector();
+			dofsHaveBeenOrdered = true;
 		}
 
-		public virtual void ReorderDofs() => OrderDofs();
+		public void OrderDofs()
+		{
+			model.ConnectDataStructures();
+			OrderDofsInternal();
+		}
+
+		public virtual void ReorderDofs() => OrderDofsInternal();
 
 		public void RebuildGlobalMatrixPartially(
 			IGlobalMatrix currentMatrix, Func<int, IEnumerable<IElementType>> accessElements,
@@ -294,7 +309,7 @@ namespace MGroup.Solvers.AlgebraicModel
 			// Casting inside here is usually safe since all global matrices should be created by this object
 			if (matrix is GlobalMatrix<TMatrix> globalMatrix)
 			{
-				if (globalMatrix.CheckForCompatibility == false ||  globalMatrix.Format == this.Format)
+				if (matrix.CheckForCompatibility == false || globalMatrix.Format == this.Format)
 				{
 					return globalMatrix;
 				}
@@ -305,12 +320,12 @@ namespace MGroup.Solvers.AlgebraicModel
 				+ $" and that the type {typeof(TMatrix)} is used.");
 		}
 
-		internal GlobalVector CheckCompatibleVector(IGlobalVector vector)
+		public GlobalVector CheckCompatibleVector(IGlobalVector vector)
 		{
 			// Casting inside here is usually safe since all global vectors should be created by the this object
 			if (vector is GlobalVector globalVector)
 			{
-				if (globalVector.CheckForCompatibility == false || globalVector.Format == this.Format)
+				if (vector.CheckForCompatibility == false || globalVector.Format == this.Format)
 				{
 					return globalVector;
 				}
